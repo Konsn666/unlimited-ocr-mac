@@ -15,7 +15,6 @@ import os
 from .deepencoder import build_sam_vit_b, build_clip_l, MlpProjector
 from addict import Dict
 from transformers import TextStreamer
-from transformers import LogitsProcessor
 from .conversation import get_conv_template
 from abc import ABC
 import math
@@ -352,7 +351,7 @@ class NoEOSTextStreamer(TextStreamer):
         print(text, flush=True, end="")
 
 
-class SlidingWindowNoRepeatNgramProcessor(LogitsProcessor):
+class SlidingWindowNoRepeatNgramProcessor:
     """Block n-gram repetitions within a sliding window.
     Aligned with SGLang DeepseekOCRNoRepeatNGramLogitProcessor."""
     def __init__(self, ngram_size, window, whitelist_token_ids=None):
@@ -1020,8 +1019,11 @@ class UnlimitedOCRForCausalLM(DeepseekV2ForCausalLM):
                 gen_kwargs['logits_processor'] = [SlidingWindowNoRepeatNgramProcessor(no_repeat_ngram_size, ngram_window)]
             elif no_repeat_ngram_size > 0:
                 gen_kwargs['no_repeat_ngram_size'] = no_repeat_ngram_size
-            # Mac-MPS workaround: disable autocast (MPS autocast with bf16 mixed-precision may
-            # cause precision drift in MLA/MoE ops, leading to logit collapse after first tokens)
+            # Mac-MPS workaround: disable autocast. Tested 6 variants in PR #57 thread:
+            #   - autocast bf16 in infer() only: works
+            #   - autocast bf16 in BOTH infer + forward (image processing): broken
+            #   - autocast fp16 anywhere: error on MPS
+            #   - no autocast: works (chosen)
             with torch.no_grad():
                 output_ids = self.generate(**gen_kwargs)
             self.config.sliding_window = _orig_sw
@@ -1045,8 +1047,6 @@ class UnlimitedOCRForCausalLM(DeepseekV2ForCausalLM):
                 gen_kwargs['logits_processor'] = [SlidingWindowNoRepeatNgramProcessor(no_repeat_ngram_size, ngram_window)]
             elif no_repeat_ngram_size > 0:
                 gen_kwargs['no_repeat_ngram_size'] = no_repeat_ngram_size
-            # Mac-MPS workaround: disable autocast (MPS autocast with bf16 mixed-precision may
-            # cause precision drift in MLA/MoE ops, leading to logit collapse after first tokens)
             with torch.no_grad():
                 output_ids = self.generate(**gen_kwargs)
             self.config.sliding_window = _orig_sw
@@ -1242,7 +1242,6 @@ class UnlimitedOCRForCausalLM(DeepseekV2ForCausalLM):
         _orig_sw = getattr(self.config, 'sliding_window_size', None) or getattr(self.config, 'sliding_window', None)
         self.config._ring_window = _orig_sw  # Save for ring buffer to read
         self.config.sliding_window = None
-        # Mac-MPS workaround: disable autocast in infer_multi too
         with torch.no_grad():
             gen_kwargs = dict(
                 input_ids=input_ids.unsqueeze(0).cuda(),
