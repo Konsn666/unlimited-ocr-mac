@@ -107,6 +107,14 @@ def apply_patches(target_device: torch.device) -> Path:
             f'torch.autocast(device_type="{autocast_device}"',
             src,
         )
+        # torch.get_autocast_gpu_dtype() → torch.get_autocast_dtype(device.type)
+        # PyTorch deprecated get_autocast_gpu_dtype(); the device-aware API is correct
+        # for any device (CUDA, MPS, etc.), not just CUDA.
+        src = re.sub(
+            r"torch\.get_autocast_gpu_dtype\(\)",
+            "torch.get_autocast_dtype(query_states.device.type)",
+            src,
+        )
 
         if src != orig:
             p.write_text(src)

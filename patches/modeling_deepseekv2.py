@@ -1063,7 +1063,7 @@ class DeepseekV2FlashAttention2(DeepseekV2Attention):
             if hasattr(self.config, "_pre_quantization_dtype"):
                 target_dtype = self.config._pre_quantization_dtype
             elif torch.is_autocast_enabled():
-                target_dtype = torch.get_autocast_gpu_dtype()
+                target_dtype = torch.get_autocast_dtype("cuda")
             else:
                 target_dtype = (
                     self.q_proj.weight.dtype
