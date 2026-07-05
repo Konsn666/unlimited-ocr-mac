@@ -1,0 +1,10 @@
+# Runtime
+uploads/
+__pycache__/
+*.pyc
+
+# Secrets (NEVER commit)
+.env
+
+# OS
+.DS_Store
